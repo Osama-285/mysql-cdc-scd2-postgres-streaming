@@ -1,0 +1,116 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: postgresDB
+    restart: unless-stopped
+
+    environment:
+    POSTGRES_DB: ECOMMERCE
+    POSTGRES_USER: admin
+    POSTGRES_PASSWORD: admin
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d
+
+    healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U admin -d ECOMMERCE"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+
+    networks:
+      - main-bridge
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    restart: unless-stopped
+
+    environment:
+    PGADMIN_DEFAULT_EMAIL: admin@local.com
+    PGADMIN_DEFAULT_PASSWORD: admin
+
+    ports:
+      - "5050:80"
+
+    depends_on:
+    postgres:
+      condition: service_healthy
+
+    networks:
+      - main-bridge
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-db
+    restart: always
+    ports:
+      - "3307:3306"
+    networks:
+      - main-bridge
+    environment:
+    MYSQL_ROOT_PASSWORD: root123
+    MYSQL_DATABASE: mydb
+    MYSQL_USER: myuser
+    MYSQL_PASSWORD: mypassword
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  debezium:
+    image: debezium/connect:2.5
+    container_name: debezium
+    ports:
+      - "8083:8083"
+    networks:
+      - main-bridge
+    environment:
+      BOOTSTRAP_SERVERS: broker2:29094
+      GROUP_ID: 1
+      CONFIG_STORAGE_TOPIC: debezium_configs
+      OFFSET_STORAGE_TOPIC: debezium_offsets
+      STATUS_STORAGE_TOPIC: debezium_status
+  broker:
+    image: confluentinc/cp-server:8.0.0
+    hostname: broker2
+    container_name: broker2
+    ports:
+      - "9094:9094"
+      - "9110:9110"
+    environment:
+    KAFKA_NODE_ID: 1
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+    KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://broker2:29094,PLAINTEXT_HOST://localhost:9094"
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 1
+    KAFKA_CONFLUENT_METADATA_TOPIC_REPLICATION_FACTOR: 1
+    KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 1
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    KAFKA_MIN_INSYNC_REPLICAS: 1
+    KAFKA_JMX_PORT: 9110
+    KAFKA_JMX_HOSTNAME: localhost
+    KAFKA_PROCESS_ROLES: "broker,controller"
+    KAFKA_CONTROLLER_QUORUM_VOTERS: "1@broker2:29095"
+    KAFKA_LISTENERS: "PLAINTEXT://broker2:29094,CONTROLLER://broker2:29095,PLAINTEXT_HOST://0.0.0.0:9094"
+    KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+    KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+    KAFKA_LOG_DIRS: "/tmp/kraft-combined-logs"
+    CLUSTER_ID: "c3VwZXItY2x1c3Rlci1pZGVudGlmaWVy" # valid base64 UUID
+    volumes:
+      - ./kafka-data:/var/lib/kafka/data
+    networks:
+      - main-bridge
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+  pg_data:
+
+networks:
+  main-bridge:
+    external: true
